@@ -1,5 +1,4 @@
 # CarouselGreedy-MultiLanguageFramework
-
 This repository provides a unified multi-language framework implementing
 the Carousel Greedy (CG) metaheuristic.
 
