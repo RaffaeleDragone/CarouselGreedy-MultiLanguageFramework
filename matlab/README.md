@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="resources/cg_logo.png" alt="Carousel Greedy MATLAB Logo" width="350"/>
+  <img src="../resources/cg_logo.png" alt="Carousel Greedy MATLAB Logo" width="350"/>
 </p>
 ## 🌀 The Carousel Greedy Algorithm
 
