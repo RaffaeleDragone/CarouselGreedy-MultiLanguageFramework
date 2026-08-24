@@ -15,6 +15,7 @@ mutable struct CarouselGreedySolver{T}
     greedy_solution::Vector{T}
     cg_solution::Vector{T}
     random_tie_break::Bool
+    feasibility_aware::Bool
     rng::AbstractRNG
     problem_type::Symbol
     iteration::Int
@@ -26,6 +27,7 @@ function CarouselGreedySolver(test_feasibility, greedy_function;
                                data=nothing,
                                candidate_elements::Vector=[],
                                random_tie_break::Bool=true,
+                               feasibility_aware::Bool=true,
                                seed::Int=42)
 
     if alpha <= 0
@@ -44,6 +46,7 @@ function CarouselGreedySolver(test_feasibility, greedy_function;
                                 Vector{eltype(candidate_elements)}(),
                                 Vector{eltype(candidate_elements)}(),
                                 random_tie_break,
+                                feasibility_aware,
                                 rng,
                                 :UNDEFINED,
                                 0)
@@ -107,11 +110,15 @@ function _removal_phase(solver::CarouselGreedySolver)
     solver.solution = solver.solution[1:end-n_remove]
 end
 
-function _iterative_phase(solver::CarouselGreedySolver, iterations::Int)
+function _iterative_phase(solver::CarouselGreedySolver, iterations::Int; feasibility_aware::Bool=solver.feasibility_aware)
     for _ in 1:iterations
         solver.iteration += 1
         !isempty(solver.solution) && popfirst!(solver.solution)
-        if solver.test_feasibility(solver, solver.solution)
+        if solver.problem_type == :MIN
+            if feasibility_aware && solver.test_feasibility(solver, solver.solution)
+                continue
+            end
+        elseif solver.test_feasibility(solver, solver.solution)
             continue
         end
         candidate = _select_best_candidate(solver)
@@ -149,18 +156,20 @@ function _completion_phase(solver::CarouselGreedySolver)
     end
 end
 
-function minimize(solver::CarouselGreedySolver; alpha=nothing, beta=nothing)
+function minimize(solver::CarouselGreedySolver; alpha=nothing, beta=nothing, feasibility_aware=nothing)
     a = isnothing(alpha) ? solver.alpha : alpha
     b = isnothing(beta) ? solver.beta : beta
     tmp_alpha = solver.alpha
     tmp_beta = solver.beta
     solver.alpha, solver.beta = a, b
     solver.problem_type = :MIN
+    fa = isnothing(feasibility_aware) ? solver.feasibility_aware : feasibility_aware
+    fa isa Bool || error("feasibility_aware must be true or false")
 
     greedy = greedy_minimize(solver)
     initial_len = length(greedy)
     _removal_phase(solver)
-    _iterative_phase(solver, a * initial_len)
+    _iterative_phase(solver, a * initial_len; feasibility_aware=fa)
     _completion_phase(solver)
 
     solver.cg_solution = copy(solver.solution)

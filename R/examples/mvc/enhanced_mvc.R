@@ -112,14 +112,30 @@ vc_is_admissible_mat <- function(self, solution) {
 # ---------------------------------------------------------------------------
 # Example execution on a single instance
 # ---------------------------------------------------------------------------
+cli_args <- commandArgs(trailingOnly = TRUE)
+feasibility_aware <- if (length(cli_args)) {
+  value <- tolower(cli_args[[1]])
+  if (!(value %in% c("true", "false"))) stop("Expected TRUE or FALSE")
+  value == "true"
+} else TRUE
 # This script demonstrates how to apply the Carousel Greedy library
 # to the Minimum Vertex Cover problem. It loads one example instance
 # and compares a simple greedy heuristic with the Carousel Greedy algorithm.
 # ---------------------------------------------------------------------------
 
 # Path of the instance (relative to this example folder)
-base_dir <- dirname(normalizePath(sys.frame(1)$ofile))
-instance_path <- file.path(base_dir, "data", "100_nodes.mis")
+script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+base_dir <- if (length(script_arg)) {
+  dirname(normalizePath(sub("^--file=", "", script_arg[[1]])))
+} else {
+  getwd()
+}
+instance_path <- if (length(cli_args) >= 2L) {
+  normalizePath(cli_args[[2]], mustWork = TRUE)
+} else {
+  file.path(base_dir, "data", "100_nodes.mis")
+}
+output_path <- if (length(cli_args) >= 3L) cli_args[[3]] else NULL
 
 cat("Loading instance:", instance_path, "\n")
 graphM <- read_instance(instance_path)
@@ -136,9 +152,10 @@ cgM <- carousel_greedy(
   candidate_elements = elemsM,
   data   = dataM,
   alpha  = 10,
-  beta   = 0.1,
+  beta   = 0.01,
+  feasibility_aware = feasibility_aware,
   random_tie_break = TRUE,
-  seed = 1
+  seed = 42
 )
 cg_start <- Sys.time()
 best_solution <- cgM$minimize()
@@ -151,3 +168,21 @@ cat("Greedy solution size:", length(greedy_solution),"\n")
 cat("Carousel Greedy solution size:", length(cg_solution),
     "\n")
 cat("Time:",cg_time, "s\n")
+cat("Feasibility aware:", feasibility_aware, "\n")
+if (!is.null(output_path)) {
+  row <- data.frame(
+    instance = basename(instance_path),
+    greedy_value = length(greedy_solution),
+    cg_value = length(cg_solution),
+    best_value = length(best_solution),
+    elapsed_seconds = cg_time,
+    feasibility_aware = feasibility_aware,
+    feasible = vc_is_admissible_mat(cgM, best_solution),
+    stringsAsFactors = FALSE
+  )
+  write.table(
+    row, output_path, sep = ",", row.names = FALSE,
+    col.names = !file.exists(output_path), append = file.exists(output_path),
+    quote = FALSE
+  )
+}

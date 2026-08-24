@@ -12,6 +12,7 @@ classdef CarouselGreedy < handle
     %       'Beta'  (0≤β≤1)           fraction removed in removal phase
     %       'Data'                    arbitrary user data (accessible via obj.Data)
     %       'RandomTieBreak' (bool)   random choice among top‑scoring candidates
+    %       'FeasibilityAware' (bool) skip replacement when removal remains feasible
     %       'Seed'  (integer)         RNG seed
     
     %   Public API (mirrors the Python version)
@@ -34,6 +35,7 @@ classdef CarouselGreedy < handle
         Data                                            % arbitrary struct / matrix / etc.
         CandidateElements                               % cell|array of candidates
         RandomTieBreak logical = true
+        FeasibilityAware logical = true
         Seed   (1,1) double {mustBeInteger} = 42
     end
 
@@ -74,6 +76,7 @@ classdef CarouselGreedy < handle
             addParameter(p,'Beta',0.2,@(x)validateattributes(x,{'numeric'},{'scalar','>=',0,'<=',1}));
             addParameter(p,'Data',[]);
             addParameter(p,'RandomTieBreak',true,@(x)islogical(x)&&isscalar(x));
+            addParameter(p,'FeasibilityAware',true,@(x)islogical(x)&&isscalar(x));
             addParameter(p,'Seed',42,@(x)validateattributes(x,{'numeric'},{'scalar','integer','nonnegative'}));
             parse(p,varargin{:});
 
@@ -82,6 +85,7 @@ classdef CarouselGreedy < handle
             obj.Beta           = p.Results.Beta;
             obj.Data           = p.Results.Data;
             obj.RandomTieBreak = p.Results.RandomTieBreak;
+            obj.FeasibilityAware = p.Results.FeasibilityAware;
             obj.Seed           = p.Results.Seed;
 
             obj.TestFeasibility = testFeasibility;
@@ -113,16 +117,22 @@ classdef CarouselGreedy < handle
             obj.GreedySolution = sol;
         end
 
-        function best = minimize(obj, alpha, beta)
+        function best = minimize(obj, alpha, beta, feasibilityAware)
             if nargin < 2 || isempty(alpha), alpha = obj.Alpha; end
             if nargin < 3 || isempty(beta),  beta  = obj.Beta;  end
+            if nargin < 4 || isempty(feasibilityAware), feasibilityAware = obj.FeasibilityAware; end
+            validateattributes(feasibilityAware, {'logical'}, {'scalar'});
             [backupAlpha, backupBeta] = deal(obj.Alpha, obj.Beta);
             obj.Alpha = alpha;  obj.Beta = beta; obj.ProblemType = 'MIN';
 
             greedy = obj.greedyMinimize();
             initLen = numel(greedy);
             obj.removalPhase();
-            obj.iterativePhase(obj.Alpha * initLen);
+            if feasibilityAware
+                obj.iterativePhaseFeasibilityAware(obj.Alpha * initLen);
+            else
+                obj.iterativePhase(obj.Alpha * initLen);
+            end
             obj.completionPhase();
             obj.CGSolution = obj.Solution;
 
@@ -132,6 +142,12 @@ classdef CarouselGreedy < handle
                 best = greedy;
             end
             [obj.Alpha,obj.Beta] = deal(backupAlpha,backupBeta);
+        end
+
+        function best = minimizeFeasibilityAware(obj, alpha, beta)
+            if nargin < 2, alpha = []; end
+            if nargin < 3, beta = []; end
+            best = obj.minimize(alpha, beta, true);
         end
 
         function best = maximize(obj, alpha, beta)
@@ -210,6 +226,29 @@ classdef CarouselGreedy < handle
                         obj.Solution = tmp;
                     end
                 end
+            end
+        end
+
+        function iterativePhaseFeasibilityAware(obj, iterations)
+            if ~strcmp(obj.ProblemType, 'MIN')
+                obj.iterativePhase(iterations);
+                return;
+            end
+
+            for k = 1:iterations
+                obj.Iteration = obj.Iteration + 1;
+                if ~isempty(obj.Solution)
+                    obj.Solution(1) = [];
+                end
+
+                % Keep a feasible shorter solution without replacing the label.
+                if obj.TestFeasibility(obj, obj.Solution)
+                    continue;
+                end
+
+                cand = obj.selectBestCandidate();
+                if isempty(cand), break; end
+                obj.appendToSolution(cand);
             end
         end
 

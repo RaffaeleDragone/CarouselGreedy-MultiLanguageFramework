@@ -103,31 +103,75 @@ function my_greedy_function(solver::CarouselGreedySolver, solution::Vector{Int},
     return global_degrees[][candidate + 1]
 end
 
-function main()
-    filepath = joinpath(@__DIR__, "data", "100_nodes.mis")
-    matrix, n, degrees = read_adjacency_matrix(filepath)
+function build_solver(matrix::Matrix{Int}, n::Int, degrees::Vector{Int}, feasibility_aware::Bool)
     initialize_globals(matrix, degrees)
     data = Dict(:matrix => deepcopy(matrix), :original => deepcopy(matrix), :n_nodes => n)
     candidates = collect(0:n-1)
-
-    solver = CarouselGreedySolver(
+    return CarouselGreedySolver(
         my_feasibility_function,
         my_greedy_function,
         alpha=10,
-        beta=0.1,
+        beta=0.01,
+        feasibility_aware=feasibility_aware,
         data=data,
         candidate_elements=candidates,
-        seed=2,
-        random_tie_break=true
+        seed=42,
+        random_tie_break=true,
     )
-    start_greedy = time()
-    solution_greedy = greedy_minimize(solver)  # warm-up compilation run
-    elapsed_greedy = time() - start_greedy
+end
+
+function solve_instance(filepath::String, feasibility_aware::Bool)
+    matrix, n, degrees = read_adjacency_matrix(filepath)
+    solver = build_solver(matrix, n, degrees, feasibility_aware)
     start_cg = time()
     solution_cg = minimize(solver)
     elapsed_cg = time() - start_cg
-    println("✔ $(basename(filepath)) → Greedy Time: $(round(elapsed_greedy, digits=4))s, Greedy Size: $(length(solution_greedy))")
-    println("✔ $(basename(filepath)) → CG Time: $(round(elapsed_cg, digits=4))s, CG Size: $(length(solution_cg))")
+    solution_greedy = solver.greedy_solution
+    feasible = my_feasibility_function(solver, solution_cg)
+    return (
+        instance=basename(filepath),
+        greedy_value=length(solution_greedy),
+        cg_value=length(solver.cg_solution),
+        best_value=length(solution_cg),
+        elapsed_seconds=elapsed_cg,
+        feasibility_aware=feasibility_aware,
+        feasible=feasible,
+    )
+end
+
+function run_batch(instances_dir::String, output_path::String, feasibility_aware::Bool)
+    paths = sort(filter(path -> endswith(path, ".mis"), readdir(instances_dir; join=true)))
+    isempty(paths) && error("No .mis instances found in $instances_dir")
+
+    # Complete warm-up outside the measured campaign.
+    solve_instance(first(paths), feasibility_aware)
+    GC.gc()
+
+    open(output_path, "w") do io
+        println(io, "instance,greedy_value,cg_value,best_value,elapsed_seconds,feasibility_aware,feasible")
+        for (index, filepath) in enumerate(paths)
+            result = solve_instance(filepath, feasibility_aware)
+            println(io, join((result.instance, result.greedy_value, result.cg_value,
+                result.best_value, result.elapsed_seconds, result.feasibility_aware,
+                result.feasible), ','))
+            flush(io)
+            println("[$index/$(length(paths))] $(result.instance): $(result.best_value)")
+        end
+    end
+end
+
+function main()
+    feasibility_aware = isempty(ARGS) ? true : lowercase(ARGS[1]) == "true"
+    isempty(ARGS) || lowercase(ARGS[1]) in ("true", "false") || error("Expected true or false")
+    filepath = joinpath(@__DIR__, "data", "100_nodes.mis")
+    matrix, n, degrees = read_adjacency_matrix(filepath)
+    warmup_solver = build_solver(matrix, n, degrees, feasibility_aware)
+    minimize(warmup_solver)
+    GC.gc()
+    result = solve_instance(filepath, feasibility_aware)
+    println("✔ $(basename(filepath)) → Greedy Size: $(result.greedy_value)")
+    println("✔ $(basename(filepath)) → CG Time: $(round(result.elapsed_seconds, digits=4))s, CG Size: $(result.best_value)")
+    println("✔ Feasibility aware: $feasibility_aware")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

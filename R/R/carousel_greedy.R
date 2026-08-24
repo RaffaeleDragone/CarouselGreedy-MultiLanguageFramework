@@ -20,6 +20,7 @@
 #' @param candidate_elements A vector of elements (e.g., strings, integers) from which the solution is built.
 #' @param data Optional. Additional data needed by your custom functions (e.g., a graph structure).
 #' @param random_tie_break Logical. Whether to break ties randomly among candidates with the same score. Default is TRUE.
+#' @param feasibility_aware Logical. For minimization, skip replacement when removal leaves a feasible solution. Default is TRUE.
 #' @param seed Optional. Integer seed for reproducibility (used in tie-breaking).
 #'
 #' @return An environment (object) containing the algorithm's state and methods:
@@ -51,11 +52,15 @@ carousel_greedy <- function(test_feasibility,
                                    candidate_elements,
                                    data = NULL,
                                    random_tie_break = TRUE,
+                                   feasibility_aware = TRUE,
                                    seed = 42) {
 
   if (!is.numeric(alpha) || alpha <= 0) stop("alpha must be a positive integer")
   if (!(beta >= 0 && beta <= 1)) stop("beta must be between 0 and 1")
   if (missing(candidate_elements)) stop("candidate_elements must be provided")
+  if (!is.logical(feasibility_aware) || length(feasibility_aware) != 1 || is.na(feasibility_aware)) {
+    stop("feasibility_aware must be TRUE or FALSE")
+  }
 
   self <- new.env(parent = emptyenv())
 
@@ -66,6 +71,7 @@ carousel_greedy <- function(test_feasibility,
   self$greedy_solution <- list()
   self$cg_solution <- list()
   self$random_tie_break <- random_tie_break
+  self$feasibility_aware <- feasibility_aware
   self$seed <- seed
   self$iteration <- 0
   self$test_feasibility <- test_feasibility
@@ -210,6 +216,32 @@ carousel_greedy <- function(test_feasibility,
     invisible(NULL)
   }
 
+  #' @description Feasibility-aware iterative phase for minimization
+  #' @param iterations Number of iterations to perform
+  self$iterative_phase_feasibility_aware <- function(iterations) {
+    if (self$problem_type != "MIN") {
+      self$iterative_phase(iterations)
+      return(invisible(NULL))
+    }
+
+    for (i in seq_len(iterations)) {
+      self$iteration <- self$iteration + 1
+
+      if (length(self$solution) > 0) {
+        self$solution <- self$solution[-1]
+      }
+
+      # A feasible shorter solution needs no replacement candidate.
+      if (self$test_feasibility(self, self$solution)) next
+
+      candidate <- self$select_best_candidate()
+      if (is.null(candidate)) break
+      self$solution <- append(self$solution, candidate)
+    }
+
+    invisible(NULL)
+  }
+
   #' @description Completion phase: ensures the solution is feasible
   self$completion_phase <- function() {
     if (self$problem_type == "MIN") {
@@ -284,7 +316,7 @@ carousel_greedy <- function(test_feasibility,
   #' @param alpha Optional custom alpha
   #' @param beta Optional custom beta
   #' @return The best feasible solution found (smallest cardinality)
-  self$minimize <- function(alpha = NULL, beta = NULL) {
+  self$minimize <- function(alpha = NULL, beta = NULL, feasibility_aware = NULL) {
     # Save temporary parameters
     tmp_alpha <- self$alpha
     tmp_beta <- self$beta
@@ -292,6 +324,10 @@ carousel_greedy <- function(test_feasibility,
     # Apply overrides if provided
     self$alpha <- if (!is.null(alpha)) alpha else self$alpha
     self$beta <- if (!is.null(beta)) beta else self$beta
+    effective_feasibility_aware <- if (is.null(feasibility_aware)) self$feasibility_aware else feasibility_aware
+    if (!is.logical(effective_feasibility_aware) || length(effective_feasibility_aware) != 1 || is.na(effective_feasibility_aware)) {
+      stop("feasibility_aware must be TRUE or FALSE")
+    }
 
     self$problem_type <- "MIN"
 
@@ -304,7 +340,11 @@ carousel_greedy <- function(test_feasibility,
 
     # Step 3: iterative phase
     iterations <- self$alpha * initial_length
-    self$iterative_phase(iterations)
+    if (effective_feasibility_aware) {
+      self$iterative_phase_feasibility_aware(iterations)
+    } else {
+      self$iterative_phase(iterations)
+    }
 
     # Step 4: completion phase
     self$completion_phase()
@@ -322,6 +362,14 @@ carousel_greedy <- function(test_feasibility,
     self$beta <- tmp_beta
 
     return(best_solution)
+  }
+
+  #' @description Minimization with a feasibility-aware iterative phase
+  #' @param alpha Optional custom alpha
+  #' @param beta Optional custom beta
+  #' @return The best feasible solution found (smallest cardinality)
+  self$minimize_feasibility_aware <- function(alpha = NULL, beta = NULL) {
+    self$minimize(alpha = alpha, beta = beta, feasibility_aware = TRUE)
   }
 
   #' @description Full Carousel Greedy algorithm for maximization
@@ -368,5 +416,3 @@ carousel_greedy <- function(test_feasibility,
 
   return(self)
 }
-
-

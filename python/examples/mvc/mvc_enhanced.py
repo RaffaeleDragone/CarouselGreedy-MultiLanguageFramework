@@ -4,6 +4,7 @@ It reads graph instances from files, applies the heuristic, and writes the resul
 """
 
 from py_carouselgreedy import carousel_greedy
+import argparse
 import time
 import networkx as nx
 
@@ -192,6 +193,9 @@ def check_feasibility(cg_solution, file_path):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--feasibility-aware", action=argparse.BooleanOptionalAction, default=True)
+    args = parser.parse_args()
     matrix, n, degrees = read_adjacency_matrix_from_file("data/100_nodes.mis")
     original_matrix = [row[:] for row in matrix]
 
@@ -207,19 +211,23 @@ def main():
         greedy_function=my_greedy_function,
         candidate_elements=candidate_elements,
         data=data,
-        seed=1
+        alpha=10,
+        beta=0.01,
+        feasibility_aware=args.feasibility_aware,
+        seed=42
     )
     cg.random_tie_break = True
 
     # Time the CG solution
     start_time = time.time()
-    best_solution = cg.minimize(alpha=10, beta=0.1)
+    best_solution = cg.minimize()
     end_time = time.time() - start_time
     cg_solution = cg.cg_solution
     greedy_solution = cg.greedy_solution
     print("Greedy solution Size : ", len(greedy_solution))
     print("CG solution Size : ", len(cg_solution))
     print("Time : ", str(round(end_time,2)))
+    print("Feasibility aware : ", args.feasibility_aware)
 
 
 if __name__ == "__main__":

@@ -190,13 +190,14 @@ The algorithm automatically calls them during the **construction**, **destructio
 
 ## ⚙️ Solver Parameters
 
-The behavior of the `carouselgreedy.CarouselGreedy` can be customized through several parameters, which can be overridden when creating the solver instance. Additionally, the parameters `alpha` and `beta` can also be redefined at runtime by passing name-value pairs to the `minimize()` and `maximize()` methods.
+The behavior of the `carouselgreedy.CarouselGreedy` can be customized through several constructor parameters. Additionally, `alpha`, `beta`, and `feasibilityAware` can be redefined for a minimization run through `minimize()`.
 
 - **`Alpha`** — Integer controlling the number of refinement iterations in the iterative phase.  
 - **`Beta`** — Fraction of elements removed during the destruction phase (between 0 and 1).  
 - **`Data`** — Optional structure containing problem-specific information such as graphs, matrices, or other relevant data.  
 - **`CandidateElements`** — Vector containing all possible candidate elements, of any type, that may be included in the solution.  
 - **`RandomTieBreak`** — Boolean (default `true`) indicating whether ties between candidates with equal scores are resolved randomly.  
+- **`FeasibilityAware`** — Boolean (default `true`). In minimization, if removing an element leaves the solution feasible, the replacement insertion and its greedy evaluations are skipped. Set it to `false` to recover the original replacement behavior.
 - **`Seed`** — Integer seed used to initialize the internal random number generator for reproducibility.  
 - **`RNG`** — Internal random number generator instance, initialized with the given seed.
 

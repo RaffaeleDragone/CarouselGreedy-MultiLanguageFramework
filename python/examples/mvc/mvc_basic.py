@@ -1,6 +1,6 @@
 import networkx as nx
 import logging
-from py_carouselgreedy import carousel_greedy
+from py_carouselgreedy.py_carouselgreedy import carousel_greedy
 
 # Configure the logger to display INFO-level messages
 logging.basicConfig(level=logging.INFO)

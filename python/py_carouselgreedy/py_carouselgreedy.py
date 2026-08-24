@@ -12,6 +12,7 @@ class carousel_greedy:
                  beta: float=0.2,
                  data: Optional[Any] = None,
                  random_tie_break: bool = True,
+                 feasibility_aware: bool = True,
                  seed: Optional[int] = 42):
         '''
         Initializes the Carousel Greedy algorithm.
@@ -22,6 +23,7 @@ class carousel_greedy:
         :param data: Additional data/context needed by the user-defined functions (e.g., graph structure).
         :param candidate_elements: List of candidate elements for building the solution.
         :param random_tie_break: Whether to use random tie-breaking among equally scored candidates.
+        :param feasibility_aware: For minimization, skip replacement when removal leaves a feasible solution.
         :param seed: Optional seed for reproducible randomness.
         '''
         # Validate inputs
@@ -31,6 +33,8 @@ class carousel_greedy:
             raise ValueError("beta must be between 0 and 1")
         if candidate_elements is None:
             raise ValueError("candidate_elements must be provided")
+        if not isinstance(feasibility_aware, bool):
+            raise ValueError("feasibility_aware must be a boolean")
 
         # Initialize internal parameters and algorithm settings
         self.alpha = alpha
@@ -41,6 +45,7 @@ class carousel_greedy:
         self.candidate_elements = candidate_elements
         self.solution: List[Any] = []  # Current working solution
         self.random_tie_break = random_tie_break
+        self.feasibility_aware = feasibility_aware
         self.seed = seed
         self.greedy_solution: List[Any] = []  # Solution from the greedy construction phase
         self.cg_solution: List[Any] = []  # Final solution after iterative improvement
@@ -159,7 +164,7 @@ class carousel_greedy:
                 if self.solution:
                     self.solution.pop(0)
 
-                if self.test_feasibility(self, self.solution):
+                if self.feasibility_aware and self.test_feasibility(self, self.solution):
                     continue
                 # Select a new candidate based on greedy criterion
                 candidate = self._select_best_candidate()
@@ -320,7 +325,8 @@ class carousel_greedy:
         self.greedy_solution = greedy_solution.copy()
         return greedy_solution
 
-    def minimize(self, alpha: Optional[int] = None, beta: Optional[float] = None) -> List[Any]:
+    def minimize(self, alpha: Optional[int] = None, beta: Optional[float] = None,
+                 feasibility_aware: Optional[bool] = None) -> List[Any]:
         """
             Executes the Carousel Greedy algorithm for a minimization problem.
 
@@ -334,6 +340,7 @@ class carousel_greedy:
             Parameters:
                 alpha (Optional[int]): Overrides the default number of iterations (alpha * |solution|) if provided.
                 beta (Optional[float]): Overrides the default fraction of elements to remove, if provided.
+                feasibility_aware (Optional[bool]): Overrides the default feasibility-aware reconstruction behavior.
 
             Returns:
                 List[Any]: The best feasible solution found (the onw with the smaller number of elements between greedy and final).
@@ -344,6 +351,11 @@ class carousel_greedy:
         effective_beta = beta if beta is not None else self.beta
         tmp_alpha = self.alpha
         tmp_beta = self.beta
+        tmp_feasibility_aware = self.feasibility_aware
+        if feasibility_aware is not None:
+            if not isinstance(feasibility_aware, bool):
+                raise ValueError("feasibility_aware must be a boolean")
+            self.feasibility_aware = feasibility_aware
         self.alpha = effective_alpha
         self.beta = effective_beta
         self.problem_type = "MIN"
@@ -375,6 +387,7 @@ class carousel_greedy:
         # Restore original alpha and beta values
         self.alpha = tmp_alpha
         self.beta = tmp_beta
+        self.feasibility_aware = tmp_feasibility_aware
         return best_solution
 
     def maximize(self, alpha: Optional[int] = None, beta: Optional[float] = None) -> List[Any]:

@@ -1,4 +1,4 @@
-function enhanced_mvc()
+function [bestSol, elapsed, greedySize, cgSize, valid] = enhanced_mvc(feasibilityAware, filePath, outputPath)
 %ENHANCED_MVC Solve the Minimum Vertex Cover problem using CarouselGreedy.
 %
 % This script demonstrates the use of the CarouselGreedy algorithm on a
@@ -14,6 +14,9 @@ function enhanced_mvc()
 %   and print the results including solution sizes and elapsed time.
 
 % --- Setup MATLAB path to include CarouselGreedy library ---
+if nargin < 1 || isempty(feasibilityAware), feasibilityAware = true; end
+if nargin < 3, outputPath = ''; end
+validateattributes(feasibilityAware, {'logical'}, {'scalar'});
 thisFile = mfilename('fullpath');
 repoRoot = fileparts(fileparts(fileparts(thisFile)));  % Navigate up to repo root
 srcPath = fullfile(repoRoot, 'src');
@@ -26,10 +29,12 @@ else
 end
 
 % --- Problem parameters and instance loading ---
-filePath = 'examples/mvc/data/100_nodes.mis';  % Instance file path
+if nargin < 2 || isempty(filePath)
+    filePath = fullfile(repoRoot, 'examples', 'mvc', 'data', '100_nodes.mis');
+end
 alpha = 10;    % Algorithm parameter alpha
-beta  = 0.1;  % Algorithm parameter beta
-seed  = 1;    % Random seed for reproducibility
+beta  = 0.01; % Algorithm parameter beta
+seed  = 42;   % Random seed for reproducibility
 
 [A, n] = read_instance(filePath);  % Load adjacency matrix and number of nodes
 rng(seed);                         % Set random seed
@@ -111,6 +116,7 @@ prevSol = [];                    % Cache previous solution to avoid redundant st
 cg = carouselgreedy.CarouselGreedy(@myFeas, @myGreedy, 1:n, ...
                     'Data', struct('original_matrix', A_orig, 'n_nodes', n), ...
                     'Alpha', alpha, 'Beta', beta, ...
+                    'FeasibilityAware', feasibilityAware, ...
                     'RandomTieBreak', true, 'Seed', seed);
 
 %% --- Execute solver and measure runtime ---
@@ -121,13 +127,28 @@ elapsed = toc;
 
 %% --- Validate final solution feasibility ---
 valid = myFeas(cg, bestSol);
+greedySize = numel(cg.GreedySolution);
+cgSize = numel(cg.CGSolution);
 
 %% --- Display results ---
 fprintf('\n--- Instance file: %s ---\n', filePath);
-fprintf('Greedy size           : %d\n', numel(cg.GreedySolution));
-fprintf('Carousel‑Greedy size  : %d\n', numel(cg.CGSolution));
+fprintf('Greedy size           : %d\n', greedySize);
+fprintf('Carousel‑Greedy size  : %d\n', cgSize);
 fprintf('Cover valid?          : %d\n', valid);
 fprintf('Elapsed time          : %.6f seconds\n', elapsed);
+fprintf('Feasibility aware     : %d\n', feasibilityAware);
+if ~isempty(outputPath)
+    [~, instanceName, instanceExt] = fileparts(filePath);
+    resultRow = table(string([instanceName instanceExt]), greedySize, cgSize, ...
+        numel(bestSol), elapsed, feasibilityAware, valid, ...
+        'VariableNames', {'instance', 'greedy_value', 'cg_value', ...
+        'best_value', 'elapsed_seconds', 'feasibility_aware', 'feasible'});
+    if isfile(outputPath)
+        writetable(resultRow, outputPath, 'WriteMode', 'append', 'WriteVariableNames', false);
+    else
+        writetable(resultRow, outputPath);
+    end
+end
 
 %% --- Helper function to read graph instance from file ---
     function [M, nNodes] = read_instance(fname)
